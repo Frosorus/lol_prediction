@@ -6,4 +6,4 @@ From now on, we save those games_id with the date it was taken on.
 And then API calls current chall + their last games (with date being the last parsing date)
 And add all of the new matches
 
-CALL ONCE A DAY and MATCHES ID SAVED IN DATA. 
+CALL ONCE A DAY and MATCHES ID SAVED IN DATA.
