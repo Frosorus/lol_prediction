@@ -5,10 +5,6 @@ import time
 import tqdm
 import json
 
-load_dotenv()
-API_KEY = os.getenv("RIOT_API_KEY")
-HEADERS = {"X-Riot-Token": API_KEY}
-
 PLATFORM = "https://euw1.api.riotgames.com"
 REGIONAL = "https://europe.api.riotgames.com"
 
@@ -72,7 +68,8 @@ def get_solorankedgames_from_puuid(puuid, start_time, end_time, start=0, count=1
         entries.extend(data)
     return entries
 
-def save_metadata(metadata, name, path='./data/'):
+def save_metadata(metadata, name, path='./data/raw/'):
+    os.makedirs(path, exist_ok=True)
     with open(os.path.join(path, name), "w") as f:
         json.dump(metadata, f, indent=2)
 
@@ -104,26 +101,54 @@ def initial_database(queues):
     
     start_time = time.time() - 6*30*24*60*60
     to_save = get_all_challengers_gameID_from_queue(queues, start_time)
+    to_save['games_processed'] = []
     save_metadata(to_save, 'gamesID.json')
 
-def refresh_database(queues, name='gamesID.json', path='./data/'):
+def refresh_database(queues, name='gamesID.json', path='./data/raw/'):
     """Allows to refresh the database with games from the last games in the file up until the time it is launched"""
     current_games = load_metadata(os.path.join(path, name))
     new_games = get_all_challengers_gameID_from_queue(queues, current_games['end_time'])
     to_save = {'start_time' : current_games['start_time'],
                'end_time' : new_games['end_time'],
-               'games': list(set(new_games['games'] + current_games['games']))}
+               'games': list(set(new_games['games'] + current_games['games'])),
+               'games_processed': current_games['games_processed']}
     save_metadata(to_save, name, path)
 
-def add_database(queues, start_time, end_time, name='gamesID.json', path='./data/'):
+def add_database(queues, start_time, end_time, name='gamesID.json', path='./data/raw/'):
     """Allows to add any time period to the file where gameIDs are saved. I don't expect this function to be used much 
     but it exists if needed"""
     current_games = load_metadata(os.path.join(path, name))
     new_games = get_all_challengers_gameID_from_queue(queues, start_time, end_time)
     to_save = {'start_time' : min(new_games['start_time'], current_games['start_time']),
                'end_time' : max(new_games['end_time'], current_games['end_time']),
-               'games': list(set(new_games['games'] + current_games['games']))}
+               'games': list(set(new_games['games'] + current_games['games'])), 
+               'games_processed': current_games['games_processed']}, 
     save_metadata(to_save, name, path)
 
 
-queues = ["RANKED_SOLO_5x5"]
+def update_games_processed(gameID, path):
+    metadata = load_metadata(path)
+    metadata['games_processed'].append(gameID)
+    save_metadata(metadata, os.path.basename(path), os.path.dirname(path))
+
+def get_timeline_from_gameID(path='./data/raw/gamesID.json'):
+    """Allows to fetch and store game overview from our gameIDs"""
+    metadata = load_metadata(path)
+    gamesID = metadata['games']
+    for gameID in gamesID:
+        if gameID in metadata['games_processed']:
+            continue
+        url = f"{REGIONAL}/lol/match/v5/matches/{gameID}/timeline"
+        game = _get(url)
+        save_metadata(game, 'timeline.json', path=f'./data/raw/{gameID}/')
+        update_games_processed(gameID, path)
+
+
+if __name__ == "__main__":
+    load_dotenv()
+    API_KEY = os.getenv("RIOT_API_KEY")
+    HEADERS = {"X-Riot-Token": API_KEY}
+    queues = ["RANKED_SOLO_5x5"]
+
+    # initial_database(queues=queues)
+    get_timeline_from_gameID()
